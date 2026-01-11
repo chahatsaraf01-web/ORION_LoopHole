@@ -1,8 +1,8 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Report } from "./types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Always use the required initialization pattern for the SDK
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
  * Enhanced Matching Engine (Shirpur Campus Restricted)
@@ -58,6 +58,7 @@ export async function scoreSimilarity(reportA: Report, reportB: Report): Promise
       }
     });
     
+    // Access response.text as a property as per guidelines
     const result = JSON.parse(response.text || '{"score": 0}');
     return result.score;
   } catch (error) {
@@ -109,7 +110,8 @@ export async function generateVerificationQuestion(found: Report): Promise<{ que
       }
     });
     
-    return JSON.parse(response.text || '{"question": "What is the main color of the item?", "answer": "Unknown"}');
+    const result = JSON.parse(response.text || '{"question": "What is the main color of the item?", "answer": "Unknown"}');
+    return result;
   } catch (error) {
     console.error("Verification generation error:", error);
     return { question: "What is the main color of the item?", answer: "Detail" };

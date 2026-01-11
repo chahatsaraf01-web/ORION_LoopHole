@@ -68,7 +68,8 @@ const Feed: React.FC<FeedProps> = ({ reports, onSelectReport, highlightId }) => 
         {filteredReports.map(report => (
           <div 
             key={report.id}
-            ref={el => scrollRefs.current[report.id] = el}
+            // Fix: Ensured the ref callback returns void to satisfy TypeScript's Ref type requirements
+            ref={el => { scrollRefs.current[report.id] = el; }}
             onClick={() => onSelectReport(report.id)}
             className={`bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all cursor-pointer group border select-none ${
               highlightId === report.id 
