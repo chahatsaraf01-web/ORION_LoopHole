@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { User, ChatMessage, Handover, Match, Report, ItemStatus } from '../types';
 
 interface ChatWindowProps {
@@ -32,16 +32,66 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [handoverCodeInput, setHandoverCodeInput] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifError, setVerifError] = useState('');
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [hasNewUnread, setHasNewUnread] = useState(false);
+  
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const foundReport = match ? reports.find(r => r.id === match.foundReportId) : null;
-  const filteredChats = chats.filter(c => c.matchId === matchId);
+  const foundReport = useMemo(() => match ? reports.find(r => r.id === match.foundReportId) : null, [match, reports]);
+  const filteredChats = useMemo(() => chats.filter(c => c.matchId === matchId), [chats, matchId]);
+  
   const isReturned = foundReport?.status === ItemStatus.RETURNED;
   const isFinder = foundReport?.userId === user.id;
 
+  // Handle auto-scroll and notifications
   useEffect(() => {
+    if (!matchId) return;
+
+    const lastMessage = filteredChats[filteredChats.length - 1];
+    if (!lastMessage) return;
+
+    // Use a small threshold to check if we're "at the bottom"
+    const isAtBottom = chatContainerRef.current 
+      ? chatContainerRef.current.scrollHeight - chatContainerRef.current.scrollTop <= chatContainerRef.current.clientHeight + 100
+      : true;
+
+    const sentByMe = lastMessage.senderId === user.id;
+
+    if (isAtBottom || sentByMe) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setHasNewUnread(false);
+    } else {
+      // If user is scrolled up and a new message arrives from the other party
+      if (!sentByMe) {
+        setHasNewUnread(true);
+      }
+    }
+
+    // Tab Visibility Notification - Alert user if they are on another tab/window
+    if (document.visibilityState === 'hidden' && !sentByMe && lastMessage.senderId !== 'SYSTEM') {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(`New message: ${foundReport?.itemName || 'Chat'}`, {
+          body: lastMessage.text,
+          icon: 'https://cdn-icons-png.flaticon.com/512/812/812328.png'
+        });
+      }
+    }
+  }, [filteredChats.length, user.id, matchId, foundReport?.itemName]);
+
+  // Monitor scroll for "Scroll to bottom" button visibility
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    const isBottom = scrollHeight - scrollTop <= clientHeight + 150;
+    setShowScrollButton(!isBottom);
+    if (isBottom) setHasNewUnread(false);
+  };
+
+  const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [filteredChats]);
+    setHasNewUnread(false);
+  };
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,8 +124,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const myConfirmation = isFinder ? handover?.isConfirmedByFinder : handover?.isConfirmedByOwner;
 
   return (
-    <div className="h-full flex flex-col bg-white rounded-3xl shadow-lg border border-slate-100 overflow-hidden">
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
+    <div className="h-full flex flex-col bg-white rounded-3xl shadow-lg border border-slate-100 overflow-hidden relative">
+      <div className="bg-white border-b px-6 py-4 flex items-center justify-between z-10">
         <div className="flex items-center space-x-3">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isReturned ? 'bg-slate-100' : isVerified ? 'bg-emerald-100' : 'bg-amber-100'}`}>
             <i className={`fas ${isReturned ? 'fa-check-double text-emerald-500' : isVerified ? 'fa-comments text-emerald-600' : 'fa-lock text-amber-600'}`}></i>
@@ -111,7 +161,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/30">
+      <div 
+        ref={chatContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/30 relative scroll-smooth"
+      >
         {filteredChats.map((msg) => (
           msg.senderId === 'SYSTEM' ? (
             <div key={msg.id} className="flex justify-center my-4">
@@ -169,10 +223,30 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           </div>
         )}
-        <div ref={chatEndRef} />
+        <div ref={chatEndRef} className="h-4" />
       </div>
 
-      <div className="p-4 border-t bg-white">
+      {/* Floating Scroll to Bottom / New Message Button */}
+      {showScrollButton && (
+        <button 
+          onClick={scrollToBottom}
+          className={`absolute bottom-24 right-8 z-20 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all animate-bounce ${
+            hasNewUnread ? 'bg-indigo-600 text-white ring-4 ring-indigo-200' : 'bg-white text-slate-500 border border-slate-200'
+          }`}
+          aria-label="Scroll to bottom"
+        >
+          {hasNewUnread ? (
+            <div className="relative">
+              <i className="fas fa-chevron-down"></i>
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-indigo-600"></span>
+            </div>
+          ) : (
+            <i className="fas fa-chevron-down"></i>
+          )}
+        </button>
+      )}
+
+      <div className="p-4 border-t bg-white z-10">
         {isReturned ? (
            <div className="text-center py-2"><p className="text-[10px] font-bold text-slate-400 uppercase">Chat closed - Item successfully returned</p></div>
         ) : !isVerified ? (

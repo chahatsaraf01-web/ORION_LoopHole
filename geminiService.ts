@@ -7,6 +7,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 /**
  * Enhanced Matching Engine (Shirpur Campus Restricted)
  * Bidirectional similarity scoring using text, category, location, and time weighting.
+ * Handles college slang and extracts specific item attributes.
  */
 export async function scoreSimilarity(reportA: Report, reportB: Report): Promise<number> {
   try {
@@ -15,11 +16,17 @@ export async function scoreSimilarity(reportA: Report, reportB: Report): Promise
       Analyze the following two reports and return a similarity score from 0 to 100.
       
       MATCHING RULES:
-      1. NORMALIZE: Ignore case, minor typos, and common stopwords.
-      2. CATEGORY MATCH: If categories are different (e.g., Electronics vs Clothing), score should be low unless descriptions overlap significantly.
-      3. LOCATION WEIGHT: Boost score if locations (e.g., 'Shirpur Library', 'Block A') are identical or logically close within the Shirpur campus layout.
-      4. TIME WEIGHT: High similarity requires reported times to be within 48 hours.
-      5. IMAGE CONTEXT: If images are available, use them to confirm object type.
+      1. ATTRIBUTE EXTRACTION: First, extract key attributes (Color, Brand, Material, Model, Markings) from both descriptions.
+      2. SLANG & IDIOM NORMALIZATION: 
+         - Normalize college slang: "ID", "ID card", "Smart card", "Identity" are identical.
+         - "Acad" or "AB" = Academic Block.
+         - "Mess" or "Dining" = Canteen.
+         - "Hostel" or "Dorm" are synonyms.
+         - Handle tech slang: "Earbuds", "Airpods", "TWS", "Buds" are often used interchangeably.
+      3. CATEGORY MATCH: If categories are fundamentally different, penalize heavily.
+      4. LOCATION WEIGHT: Boost score if locations are identical or logical neighbors (e.g., Academic Block A and Library).
+      5. TIME WEIGHT: Reports closer in time (within 48h) get a slight boost; very distant reports (>1 week) are penalized.
+      6. IMAGE CONTEXT: If images are available, use visual features to confirm or refute a match.
 
       REPORT 1 (${reportA.type}):
       Category: ${reportA.category}
@@ -51,6 +58,9 @@ export async function scoreSimilarity(reportA: Report, reportB: Report): Promise
         responseSchema: {
           type: Type.OBJECT,
           properties: {
+            extractedAttributesA: { type: Type.STRING },
+            extractedAttributesB: { type: Type.STRING },
+            reasoning: { type: Type.STRING },
             score: { type: Type.NUMBER, description: "Final weighted similarity score 0-100" }
           },
           required: ["score"]
@@ -58,7 +68,6 @@ export async function scoreSimilarity(reportA: Report, reportB: Report): Promise
       }
     });
     
-    // Access response.text as a property as per guidelines
     const result = JSON.parse(response.text || '{"score": 0}');
     return result.score;
   } catch (error) {
@@ -129,7 +138,8 @@ export async function validateAnswer(userAnswer: string, correctAnswer: string):
       
       VALIDATION RULES:
       1. Be lenient: Accept case-insensitive matches, minor spelling variations, and synonyms.
-      2. Accept partial matches if the key detail (e.g., "Red" vs "It is dark red") is present.
+      2. Handle college abbreviations: (e.g., if answer is "Academic Block" and user says "Acad", it's a match).
+      3. Accept partial matches if the key detail (e.g., "Red" vs "It is dark red") is present.
       
       Expected: ${correctAnswer}
       User Answer: ${userAnswer}
