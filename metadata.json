@@ -1,0 +1,7 @@
+{
+  "name": "FoundIt NMIMS ",
+  "description": "A secure Lost & Found portal for NMIMS students featuring AI-powered matching, secure verification, and managed handovers.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
